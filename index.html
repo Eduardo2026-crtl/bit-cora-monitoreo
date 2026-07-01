@@ -65,6 +65,12 @@
                     <i class="fa-solid fa-right-to-bracket"></i> Validar Credenciales
                 </button>
             </form>
+            
+            <div class="text-center mt-4">
+                <button type="button" onclick="resetToFactorySettings()" class="text-[11px] text-slate-500 hover:text-red-400 transition font-medium underline">
+                    <i class="fa-solid fa-arrows-rotate"></i> Restablecer Configuración de Fábrica
+                </button>
+            </div>
         </div>
     </div>
 
@@ -342,15 +348,16 @@
 
     <!-- SCRIPT DE CONTROL OPERATIVO -->
     <script>
-        const DEFAULT_USERS = [
+        // Base de datos de origen estática con el equipo asignado
+        const CORE_USERS = [
             { username: "eduardo.franco", password: "admin123", name: "Eduardo Franco", role: "admin" },
-            { username: "direccion.seguridad", password: "viewer2026", name: "Dirección de Seguridad", role: "viewer" }
-            { username: "mayra.hernandez", password: "31439", name: "Mayra Hernandez", role: "analyst" }
-            { username: "roberto.morales", password: "32317", name: "Roberto Morales", role: "analyst" }
-            { username: "jcarlos.sanchez", password: "14778", name: "Juan Carlos Sanchez", role: "analyst" }
-            { username: "monica.diego", password: "32694", name: "Monica Diego", role: "analyst" }
-            { username: "humberto.alvarez", password: "23718", name: "Humberto Alvarez", role: "analyst" }
-            { username: "ivan.diaz", password: "30913", name: "Ivan Diaz", role: "analyst" }
+            { username: "direccion.seguridad", password: "viewer2026", name: "Dirección de Seguridad", role: "direccion" },
+            { username: "mayra.hernandez", password: "31439", name: "Mayra Hernandez", role: "analista" },
+            { username: "roberto.morales", password: "32117", name: "Roberto Morales", role: "analista" },
+            { username: "jcarlos.sanchez", password: "14778", name: "Juan Carlos Sanchez", role: "analista" },
+            { username: "monica.diego", password: "32694", name: "Monica Diego", role: "analista" },
+            { username: "humberto.alvarez", password: "23718", name: "Humberto Alvarez", role: "analista" },
+            { username: "ivan.diaz", password: "30913", name: "Ivan Diaz", role: "analista" }
         ];
 
         let coreUsers = [];
@@ -379,11 +386,22 @@
         function loadUsers() {
             const savedUsers = localStorage.getItem('bitacora_users');
             if (savedUsers) {
-                try { coreUsers = JSON.parse(savedUsers); } catch(e) { coreUsers = [...DEFAULT_USERS]; }
+                try { 
+                    let localData = JSON.parse(savedUsers); 
+                    // Fusión inteligente: Asegura que si agregaste usuarios en el código HTML, aparezcan en equipos existentes
+                    CORE_USERS.forEach(cu => {
+                        if (!localData.some(lu => lu.username.toLowerCase() === cu.username.toLowerCase())) {
+                            localData.push(cu);
+                        }
+                    });
+                    coreUsers = localData;
+                } catch(e) { 
+                    coreUsers = [...CORE_USERS]; 
+                }
             } else {
-                coreUsers = [...DEFAULT_USERS];
-                localStorage.setItem('bitacora_users', JSON.stringify(coreUsers));
+                coreUsers = [...CORE_USERS];
             }
+            localStorage.setItem('bitacora_users', JSON.stringify(coreUsers));
         }
 
         function loadIncidents() {
@@ -417,12 +435,12 @@
                 const btnExportar = document.getElementById('btnExportarCsv');
                 const btnGestion = document.getElementById('btnGestionUsuarios');
 
-                if (role === 'viewer') {
+                if (role === 'direccion' || role === 'viewer') {
                     leftPanel.style.display = 'none';
                     rightPanel.className = "lg:col-span-12 flex flex-col gap-6";
                     btnExportar.style.display = 'none';
                     btnGestion.style.display = 'none';
-                } else if (role === 'analyst') {
+                } else if (role === 'analista' || role === 'analyst') {
                     leftPanel.style.display = 'flex';
                     rightPanel.className = "lg:col-span-8 flex flex-col gap-6";
                     btnExportar.style.display = 'none';
@@ -500,7 +518,7 @@
                 return;
             }
 
-            coreUsers.push({ username, password, name: realName, role: 'analyst' });
+            coreUsers.push({ username, password, name: realName, role: 'analista' });
             localStorage.setItem('bitacora_users', JSON.stringify(coreUsers));
             
             document.getElementById('newUserForm').reset();
@@ -509,7 +527,7 @@
         }
 
         function deleteUser(username) {
-            if (username === 'eduardo.franco') return;
+            if (username === 'eduardo.franco' || username === 'direccion.seguridad') return;
 
             Swal.fire({
                 title: '¿Eliminar Analista?',
@@ -563,7 +581,8 @@
             markersGroup = L.layerGroup().addTo(map);
             
             map.on('click', (e) => {
-                if(sessionStorage.getItem('session_role') === 'viewer') return;
+                const currentRole = sessionStorage.getItem('session_role');
+                if(currentRole === 'viewer' || currentRole === 'direccion') return;
                 document.getElementById('lat').value = e.latlng.lat.toFixed(6);
                 document.getElementById('lng').value = e.latlng.lng.toFixed(6);
             });
@@ -681,7 +700,8 @@
                         card.className = `bg-slate-800/40 border border-slate-800 rounded-lg p-3 mb-2 flex justify-between items-center text-xs`;
                         
                         const userRole = sessionStorage.getItem('session_role');
-                        const actionButtonHTML = (inc.estatus !== 'Resuelto' && userRole !== 'viewer') 
+                        const canModify = userRole !== 'viewer' && userRole !== 'direccion';
+                        const actionButtonHTML = (inc.estatus !== 'Resuelto' && canModify) 
                             ? `<button type="button" onclick="updateStatus('${inc.id}', '${inc.estatus === 'Abierto' ? 'En Proceso' : 'Resuelto'}')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-0.5 rounded text-[10px] mt-1 transition">Avanzar</button>` 
                             : '';
 
@@ -715,7 +735,8 @@
         }
 
         function updateStatus(incidentId, newStatus) {
-            if(sessionStorage.getItem('session_role') === 'viewer') return;
+            const currentRole = sessionStorage.getItem('session_role');
+            if(currentRole === 'viewer' || currentRole === 'direccion') return;
             const idx = incidents.findIndex(i => i.id === incidentId);
             if(idx !== -1) {
                 incidents[idx].estatus = newStatus;
@@ -757,6 +778,38 @@
             modal.classList.add('hidden');
             modal.style.display = 'none';
             tempIncidentData = null;
+        }
+
+        function resetToFactorySettings() {
+            Swal.fire({
+                title: '¿Restablecer Aplicación?',
+                text: "Se borrará la memoria interna y se recargarán los accesos y analistas desde el código de fábrica.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#475569',
+                confirmButtonText: 'Sí, restablecer',
+                cancelButtonText: 'Cancelar',
+                background: '#1e293b',
+                color: '#fff'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    localStorage.removeItem('bitacora_users');
+                    sessionStorage.clear();
+                    loadUsers();
+                    Swal.fire({
+                        title: 'Sistema Restablecido',
+                        text: 'Memoria limpia. Ya puedes iniciar sesión de forma correcta.',
+                        icon: 'success',
+                        background: '#1e293b',
+                        color: '#fff',
+                        timer: 2000,
+                        showConfirmButton: false
+                    }).then(() => {
+                        window.location.reload();
+                    });
+                }
+            });
         }
     </script>
 </body>
